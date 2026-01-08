@@ -1,0 +1,127 @@
+name: train_restoration_gan
+use_tb_logger: true
+model_type: RefRestorationModel
+map_type: online_CUFED_swap
+scale: 4
+crop_border: ~
+set_CUDA_VISIBLE_DEVICES: ~
+gpu_ids: [0]
+
+# datasets
+datasets:
+  train:
+    name: CUFED
+    type: RefCUFEDDataset
+    dataroot_in: /home/ivc2411/DATSRBSRGAN/datasets/train/DF2K_custom/input
+    #dataroot_ref: /home/ivc2411/train_LR_check/double_less
+    #dataroot_in: /home/ivc2411/DATSR/datasets/CUFED/train/input
+    dataroot_ref: /home/ivc2411/DATSRBSRGAN/datasets/train/DF2K_custom/ref
+    #dataroot_lr: /home/ivc2411/KAIR/trainsets/trainH/bsrgan_LR
+    io_backend:
+      type: disk
+
+    gt_size: 288 #lr 72
+    use_flip: true
+    use_rot: true
+
+    bicubic_model: PIL
+
+    use_shuffle: true
+    n_workers: 6 # per GPU
+    batch_size: 2
+    dataset_enlarge_ratio: 1000
+
+  val:
+    name: val_CUFED
+    type: RefCUFEDDataset
+    dataroot_in: /home/ivc2411/DATSR/datasets/CUFED/test/CUFED5
+    dataroot_ref: /home/ivc2411/DATSR/datasets/CUFED/test/CUFED5
+    io_backend:
+      type: disk
+
+    ann_file: /home/ivc2411/DATSRBSRGAN/datasets/CUFED5_pairs.txt
+
+    bicubic_model: PIL
+
+# network structures
+network_g:
+  type: SwinUnetv3RestorationNet
+  ngf: 64
+  n_blocks: 8
+  groups: 8
+  embed_dim: 128
+  depths: [4,4]
+  num_heads: [4,4]
+  window_size: 8
+  use_checkpoint: True
+network_d:
+  type: Discriminator_PatchGAN
+  in_nc: 3
+  ndf: 64
+network_map:
+  type: FlowSimCorrespondenceGenerationArch
+  patch_size: 3
+  stride: 1
+  vgg_layer_list: ['relu1_1', 'relu2_1', 'relu3_1']
+  vgg_type: 'vgg19'
+network_extractor:
+  type: ContrasExtractorSep
+
+# path
+path:
+  pretrain_model_g: 
+  pretrain_model_d: 
+  pretrain_model_feature_extractor: /home/ivc2411/DATSR/experiments/pretrained_model/feature_extraction.pth
+  strict_load: true
+  resume_state: 
+  root: experiments/train/
+
+# training settings: learning rate scheme, loss
+train:
+  lr_g: !!float 5e-5
+  lr_offset: !!float 1e-4
+  lr_relu2_offset: !!float 1e-5
+  lr_relu3_offset: !!float 1e-6
+  weight_decay_g: 0
+  beta_g: [0.9, 0.999]
+  lr_d: !!float 5e-5
+  weight_decay_d: 0
+  beta_d: [0.9, 0.999]
+  lr_scheme: MultiStepLR
+
+  niter: 400000 #
+  warmup_iter: -1  # no warm up
+  net_g_pretrain_steps: 0
+  lr_steps: [800000, 1600000] #[72545, 161040] #[72545, 211040]
+  lr_gamma: 0.5
+
+  pixel_criterion: L1Loss
+  pixel_weight: !!float 1.0
+ 
+  perceptual_opt:
+    feature_layer: [2, 7, 16, 25, 34]
+    weights: [0.1, 0.1, 1.0, 1.0, 1.0]
+    lossfn_type: "l1"
+    use_input_norm: true
+    use_range_norm: false
+  gan_type: wgan
+  gan_weight: !!float 0.1
+  grad_penalty_weight: 0
+
+  net_d_steps: 1
+  net_d_init_steps: 0
+
+  manual_seed: 10
+
+val:
+  val_freq: !!float 5e6
+  save_img: False
+
+# logger
+logger:
+  print_freq: 100
+  save_checkpoint_freq: !!float 5e3
+
+dist_params:
+  backend: nccl
+  port: 29746
